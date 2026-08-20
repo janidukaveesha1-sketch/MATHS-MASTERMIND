@@ -3,3 +3,5 @@ google-genai
 pillow
 matplotlib
 numpy
+streamlit-lottie
+requests

@@ -1,91 +1,125 @@
 import os
-import re
+import requests
 import streamlit as st
-from PIL import Image
 from google import genai
-from google.genai import types
 
-# Page Config (අකුරු සහ Layout එක සකස් කිරීම)
-st.set_page_config(page_title="A/L Science Master Tutor", layout="wide")
+# 1. Page Configuration
+st.set_page_config(
+    page_title="A/L Master Tutor",
+    page_icon="🎓",
+    layout="wide"
+)
 
-st.title("🎓 A/L Master Tutor (Maths | Physics | Chemistry)")
-st.write("අතින් ලියන නිවැරදි ගණිතමය සංකේත (LaTeX Math) සහ Live Visual Animations සමඟින්")
+# 2. CSS & Background Video Loop
+st.markdown(
+    """
+    <style>
+    #bg-video {
+        position: fixed;
+        right: 0;
+        bottom: 0;
+        min-width: 100%;
+        min-height: 100%;
+        width: auto;
+        height: auto;
+        z-index: -1;
+        object-fit: cover;
+        opacity: 0.35;
+    }
+    .stApp {
+        background: transparent !important;
+    }
+    </style>
+    
+    <video autoplay muted loop id="bg-video">
+      <source src="https://assets.mixkit.co/videos/preview/mixkit-stars-in-space-1610-large.mp4" type="video/mp4">
+    </video>
+    """,
+    unsafe_allow_html=True
+)
 
-# API Key එක
-# Streamlit Secrets වලින් API Key එක ලබාගැනීම
-API_KEY = st.secrets["GEMINI_API_KEY"]
+# 3. Lottie Animation Helper Function
+def load_lottieurl(url: str):
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        return None
+    return None
 
-# Sidebar - Settings
-with st.sidebar:
-    st.header("⚙️ Settings")
-    language = st.radio("Language / භාෂාව තෝරන්න:", ["Sinhala", "English"])
-    subject = st.selectbox("විෂය තෝරන්න:", ["Combined Mathematics", "Physics", "Chemistry"])
-    input_type = st.radio("ප්‍රශ්නය ලබාදෙන ආකාරය:", ["Text", "Photo Upload"])
+# Lottie Animation එක Import කර පරීක්ෂා කිරීම
+try:
+    from streamlit_lottie import st_lottie
+    lottie_anim = load_lottieurl("https://assets2.lottiefiles.com/packages/lf20_DMgB15.json")
+except ImportError:
+    st_lottie = None
+    lottie_anim = None
 
-user_image = None
-user_text = ""
+# 4. Main UI Layout
+col1, col2 = st.columns([2, 1])
 
-if input_type == "Photo Upload":
-    uploaded_file = st.file_uploader("ප්‍රශ්නයේ Photo එක Upload කරන්න", type=["jpg", "jpeg", "png"])
-    if uploaded_file:
-        user_image = Image.open(uploaded_file)
-        st.image(user_image, caption="Uploaded Image", use_column_width=True)
-    user_text = st.text_input("අමතර විස්තර/උපදෙස් (අවශ්‍ය නම් පමණක්):")
-else:
-    user_text = st.text_area("ඔබගේ ප්‍රශ්නය මෙතන Type කරන්න:", height=150)
+with col1:
+    st.title("🎓 A/L Master Tutor (Maths | Physics | Chemistry)")
+    st.write("අතින් ලියන නිවැරදි ගණිතමය සංකේත (LaTeX Math) සමඟින් A/L ප්‍රශ්න විසඳාගන්න.")
 
-# Submit Button
-if st.button("🚀 විසඳුම ලබාගන්න (Solve & Animate)"):
-    if API_KEY == "YOUR_GEMINI_API_KEY_HERE" or not API_KEY.strip():
-        st.error("❌ කරුණාකර නිවැරදි Gemini API Key එක ඇතුළත් කරන්න.")
-    elif not user_text and not user_image:
-        st.warning("⚠️ කරුණාකර ප්‍රශ්නයක් හෝ Image එකක් ලබාදෙන්න.")
+with col2:
+    if st_lottie and lottie_anim:
+        st_lottie(lottie_anim, height=150, key="tutor_anim")
+
+# 5. Question Input Area
+user_query = st.text_area("ඔබගේ ප්‍රශ්නය මෙතන Type කරන්න:", height=120)
+
+if st.button("🚀 විසඳුම ලබාගන්න (Solve Problem)"):
+    # API Key එක Streamlit Secrets හෝ Environment Variables වලින් ලබාගැනීම
+    api_key = None
+    if "GEMINI_API_KEY" in st.secrets:
+        api_key = st.secrets["GEMINI_API_KEY"]
+    elif os.environ.get("GEMINI_API_KEY"):
+        api_key = os.environ.get("GEMINI_API_KEY")
+
+    if not user_query.strip():
+        st.warning("කරුණාකර ප්‍රශ්නයක් ඇතුළත් කරන්න.")
+    elif not api_key:
+        st.error("Gemini API Key එක සකස් කර නැත! Streamlit Cloud හි App Settings -> Secrets වලට GEMINI_API_KEY එකතු කරන්න.")
     else:
-        try:
-            client = genai.Client(api_key=API_KEY)
-
-            system_prompt = f"""
-            ඔබ ශ්‍රී ලංකාවේ A/L {subject} ප්‍රවීණ ආචාර්යවරයෙකි.
-            ලබාදී ඇති ප්‍රශ්නයට පිළිතුරු සපයන විට:
-            1. **ගණිතමය සංකේත සහ සූත්‍ර (Math Symbols & Formulas):** පරිගණක සංකේත (*, /, **) වෙනුවට අතින් ලියන ක්‍රමයටම LaTeX භාවිත කරන්න (උදා: \\frac{{a}}{{b}}, \\sqrt{{x}}, x^2, \\times, \\int, \\theta).
-            2. **මූලික සිද්ධාන්ත (Core Theory):** සිංහලෙන් පැහැදිලි කරන්න.
-            3. **පියවරෙන් පියවර විසඳීම (Step-by-Step Solution):** සියලු සුළු කිරීම් අතින් ලියන සංකේත සහිතව දක්වන්න.
-            4. **Visual Simulation:** ප්‍රස්ථාර/Animations සඳහා runnable Python code එකක් වෙනම ```python ``` block එකක් ඇතුළත ලබාදෙන්න (plt.show() රහිතව, st.pytest/st.pyplot සඳහා සූදානම් කර).
-            """
-
-            contents = []
-            if user_image:
-                contents.append(user_image)
-            contents.append(user_text if user_text.strip() else f"Solve {subject} problem.")
-
-            with st.spinner("⚡ විසඳුම සහ ප්‍රස්ථාර සකස් වෙමින් පවතී..."):
+        with st.spinner("Gemini AI මගින් විසඳුම සකස් කරමින් පවතී..."):
+            try:
+                # Gemini Client සෑදීම
+                client = genai.Client(api_key=api_key)
+                
+                # System Prompt එක සකස් කිරීම
+                prompt = f"""
+                You are an expert Sri Lankan G.C.E. Advanced Level Combined Mathematics, Physics, and Chemistry tutor.
+                Solve the following student query step-by-step clearly in Sinhala.
+                Use standard LaTeX formatting ($...$ for inline math and $$...$$ for block equations) for all mathematical expressions, variables, and formulas.
+                
+                Question:
+                {user_query}
+                """
+                
                 response = client.models.generate_content(
-                    model='gemini-3.6-flash',
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_prompt,
-                        temperature=0.1
-                    )
+                    model="gemini-2.5-flash",
+                    contents=prompt
                 )
+                
+                st.success("විසඳුම සාර්ථකව සකස් කරන ලදී!")
+                st.markdown(response.text)
+                
+            except Exception as e:
+                st.error(f"දෝෂයක් සිදු විය: {str(e)}")
 
-                full_response = response.text
+# 6. Sidebar & Footer
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 👨‍💻 Developed by")
+st.sidebar.write("**Janidu Kaveesha**")
 
-                # Display Response with LaTeX Math
-                st.markdown("### 📝 විසඳුම සහ සිද්ධාන්ත පැහැදිලි කිරීම:")
-                st.markdown(full_response)
-
-                # Execute Matplotlib Code inside Web App
-                python_code_match = re.search(r"```python(.*?)```", full_response, re.DOTALL)
-                if python_code_match:
-                    code = python_code_match.group(1).strip()
-                    st.markdown("### 🎬 Visual Simulation / Graph:")
-                    
-                    # Safe execution for Streamlit rendering
-                    exec_scope = {}
-                    exec(code, exec_scope)
-                    
-                    import matplotlib.pyplot as plt
-                    st.pyplot(plt.gcf())
-
-        except Exception as e:
-            st.error(f"❌ දෝෂයක් සිදු විය: {e}")
+st.markdown("---")
+st.markdown(
+    """
+    <div style="text-align: center; color: #ffffff; padding: 10px;">
+        <p>Created with ❤️ by <b>Janidu Kaveesha</b> | Powered by <b>Gemini AI</b> 🤖</p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
